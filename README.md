@@ -6,7 +6,7 @@ Automatically qualify every form submission using AI â€” score lead quality (ðŸ”
 **Try it now:** [Submit a test inquiry](https://automation.etuannv.com/form/e22e7bc8-9840-416e-bf8d-71f117647172)  
 **See results:** [Live Airtable](https://airtable.com/appFVeuyLArweHyTi/shrXQgx46zudpUMCw)  
 **Full writeup:** [Blog post](https://etuannv.com/n8n-ai-lead-capture-airtable)  
-**Portfolio:** [Upwork case study]([https://www.upwork.com/freelancers/etuannv](https://www.upwork.com/freelancers/~015d7fc44d9ed592a4))
+**Portfolio:** [Upwork case study]([[https://www.upwork.com/freelancers/etuannv](https://www.upwork.com/freelancers/~015d7fc44d9ed592a4)](https://www.upwork.com/freelancers/~015d7fc44d9ed592a4))
 
 ---
 
