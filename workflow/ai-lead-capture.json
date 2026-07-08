@@ -1,0 +1,181 @@
+{
+  "name": "Demo 2 - AI Lead Capture (Form → Claude → Airtable → Telegram)",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Project Inquiry Form",
+        "formDescription": "Tell us about your project and we'll get back to you within 24 hours.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Full Name",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Email",
+              "fieldType": "email",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Company",
+              "fieldType": "text",
+              "requiredField": false
+            },
+            {
+              "fieldLabel": "Project Description",
+              "fieldType": "textarea",
+              "requiredField": true,
+              "placeholder": "Describe what you need automated, your current process, and your timeline."
+            },
+            {
+              "fieldLabel": "Budget (USD)",
+              "fieldType": "text",
+              "requiredField": false,
+              "placeholder": "e.g. $500, $1000-2000, not sure yet"
+            }
+          ]
+        },
+        "options": {
+          "respondWith": "text",
+          "responseText": "Thanks! We've received your inquiry and will get back to you within 24 hours."
+        }
+      },
+      "id": "node-form-trigger",
+      "name": "Project Inquiry Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [0, 300],
+      "webhookId": "ai-lead-capture-form"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: 'claude-haiku-4-5-20251001',\n  max_tokens: 1024,\n  system: \"You analyze project inquiry forms submitted to a freelance automation developer. Extract and assess the lead. Respond with ONLY a valid JSON object, no markdown fences, no preamble, with EXACTLY these keys:\\n- lead_quality: one of 'hot' (clear need + budget + timeline), 'warm' (has need but vague budget/timeline), 'cold' (too vague or very low budget)\\n- project_type: one of 'workflow_automation', 'ai_agent', 'rag_chatbot', 'data_pipeline', 'integration', 'other'\\n- budget_usd: extract numeric estimate if mentioned, or 0 if not mentioned\\n- timeline: one of 'urgent' (< 2 weeks), 'normal' (2-8 weeks), 'flexible' (no deadline mentioned)\\n- summary: 1-2 sentence summary of what they need\\n- suggested_action: one specific next step the freelancer should take (e.g. 'Schedule a discovery call to clarify scope', 'Send portfolio of similar RAG projects', 'Ask for budget range before proceeding')\\nOutput nothing except the JSON object.\",\n  messages: [{\n    role: 'user',\n    content: `Analyze this project inquiry:\\n\\nName: ${$json['Full Name']}\\nEmail: ${$json['Email']}\\nCompany: ${$json['Company'] || 'Not provided'}\\nProject Description: ${$json['Project Description']}\\nBudget: ${$json['Budget (USD)'] || 'Not mentioned'}`\n  }]\n}) }}",
+        "options": {}
+      },
+      "id": "node-claude",
+      "name": "Claude: Analyze Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ANTHROPIC_CRED",
+          "name": "Anthropic x-api-key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Claude response + merge with form data\nconst claudeResponse = $input.first();\nconst formData = $('Project Inquiry Form').first();\n\nlet raw = '';\ntry {\n  raw = claudeResponse.json.content[0].text;\n} catch (e) {\n  throw new Error('Anthropic response unexpected: ' + JSON.stringify(claudeResponse.json).slice(0, 300));\n}\n\nconst clean = raw.replace(/```json/gi, '').replace(/```/g, '').trim();\n\nlet ai;\ntry {\n  ai = JSON.parse(clean);\n} catch (e) {\n  ai = { lead_quality: 'warm', project_type: 'other', budget_usd: 0, timeline: 'flexible', summary: clean.slice(0, 200), suggested_action: 'Review manually' };\n}\n\nreturn [{\n  json: {\n    // Form fields\n    submitted_at: new Date().toISOString(),\n    full_name: formData.json['Full Name'] || '',\n    email: formData.json['Email'] || '',\n    company: formData.json['Company'] || '',\n    project_description: formData.json['Project Description'] || '',\n    budget_raw: formData.json['Budget (USD)'] || '',\n    // AI analysis\n    lead_quality: ai.lead_quality || 'warm',\n    project_type: ai.project_type || 'other',\n    budget_usd: ai.budget_usd || 0,\n    timeline: ai.timeline || 'flexible',\n    summary: ai.summary || '',\n    suggested_action: ai.suggested_action || ''\n  }\n}];"
+      },
+      "id": "node-parse",
+      "name": "Parse & Merge",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "baseId": {
+          "__rl": true,
+          "value": "REPLACE_AIRTABLE_BASE_ID",
+          "mode": "id"
+        },
+        "tableId": {
+          "__rl": true,
+          "value": "REPLACE_AIRTABLE_TABLE_ID",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Submitted At": "={{ $json.submitted_at }}",
+            "Full Name": "={{ $json.full_name }}",
+            "Email": "={{ $json.email }}",
+            "Company": "={{ $json.company }}",
+            "Project Description": "={{ $json.project_description }}",
+            "Budget (Raw)": "={{ $json.budget_raw }}",
+            "Lead Quality": "={{ $json.lead_quality }}",
+            "Project Type": "={{ $json.project_type }}",
+            "Budget USD": "={{ $json.budget_usd }}",
+            "Timeline": "={{ $json.timeline }}",
+            "AI Summary": "={{ $json.summary }}",
+            "Suggested Action": "={{ $json.suggested_action }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "node-airtable",
+      "name": "Save to Airtable",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [660, 300],
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "REPLACE_AIRTABLE_CRED",
+          "name": "Airtable token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "REPLACE_TELEGRAM_CHAT_ID",
+        "text": "={{ \n  const q = $json.lead_quality;\n  const emoji = q === 'hot' ? '🔥' : q === 'warm' ? '⚡' : '❄️';\n  return `${emoji} *New Lead: ${q.toUpperCase()}*\\n\\nName: ${$json.full_name}\\nEmail: ${$json.email}\\nCompany: ${$json.company || 'N/A'}\\nType: ${$json.project_type}\\nBudget: $${$json.budget_usd} (${$json.budget_raw || 'not stated'})\\nTimeline: ${$json.timeline}\\n\\n📋 ${$json.summary}\\n\\n✅ Next: ${$json.suggested_action}`;\n}}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "node-telegram",
+      "name": "Telegram Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [880, 300],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_TELEGRAM_CRED",
+          "name": "Telegram bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Project Inquiry Form": {
+      "main": [[{ "node": "Claude: Analyze Lead", "type": "main", "index": 0 }]]
+    },
+    "Claude: Analyze Lead": {
+      "main": [[{ "node": "Parse & Merge", "type": "main", "index": 0 }]]
+    },
+    "Parse & Merge": {
+      "main": [[{ "node": "Save to Airtable", "type": "main", "index": 0 }]]
+    },
+    "Save to Airtable": {
+      "main": [[{ "node": "Telegram Alert", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
