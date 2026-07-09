@@ -169,6 +169,7 @@ n8n-ai-lead-capture-airtable/
 **📖 Read the prompt engineering writeup:** https://etuannv.com/prompt-engineering-5-levels  
 **📖 Read the Claude Code, Efficiently writeup:** https://etuannv.com/claude-code-efficiently  
 
+---
 
 ## Author
 
